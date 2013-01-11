@@ -4064,6 +4064,8 @@ sub set_constants {                          # {{{1
             'rdf'         => 'W3C RDF'               , # Resource Description Framework
             'fodg'        => 'Libre Office'          , # Libre Office Graphics
             'fodt'        => 'Libre Office'          , # Libre Office Documents
+            'cmd'         => 'DOS Batch'             ,
+            'CMD'         => 'DOS Batch'             ,
             );
 # 1}}}
 %{$rh_Language_by_Script}    = (             # {{{1
