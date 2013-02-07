@@ -4068,10 +4068,6 @@ sub set_constants {                          # {{{1
             'rst'         => 'reStructuredText'      , # reStructuredText
             'tex'         => 'LaTeX'                 , # LaTeX
             'bib'         => 'LaTeX'                 , # LaTeX bibliography
-            'owl'         => 'W3C OWL'               , # Ontology Web Language
-            'rdf'         => 'W3C RDF'               , # Resource Description Framework
-            'fodg'        => 'Libre Office'          , # Libre Office Graphics
-            'fodt'        => 'Libre Office'          , # Libre Office Documents
             'cmd'         => 'DOS Batch'             ,
             'CMD'         => 'DOS Batch'             ,
             );
@@ -4487,12 +4483,6 @@ sub set_constants {                          # {{{1
     'Markdown'           => [   [ 'call_regexp_common'  , 'HTML'   ], ], # reStructuredText
     'reStructuredText'   => [   [ 'remove_matches'      , '^\s*\.\.'  ], ], # reStructuredText
     'LaTeX'              => [   [ 'remove_matches'      , '^\%'    ], ], # LaTeX comment
-    'W3C RDF'            => [   [ 'remove_html_comments',          ],
-                                [ 'call_regexp_common'  , 'HTML'   ], ], # RDF and OWL all rooted from XML
-    'W3C OWL'            => [   [ 'remove_html_comments',          ],
-                                [ 'call_regexp_common'  , 'HTML'   ], ],
-    'Libre Office'       => [   [ 'remove_html_comments',          ],
-                                [ 'call_regexp_common'  , 'HTML'   ], ], # Libre Office
     );
 # 1}}}
 %{$rh_EOL_continuation_re} = (               # {{{1
