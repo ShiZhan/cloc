@@ -156,7 +156,7 @@ Usage: $script [options] <file(s)/dir(s)> | <set 1> <set 2> | <report files>
                                --extract-with='gzip -dc >FILE< | tar xf -'
                              or, if you have GNU tar,
                                --extract-with='tar zxf >FILE<'
-                             and on Windows use:
+                             and on Windows use, for example:
                                --extract-with=\"\\\"c:\\Program Files\\WinZip\\WinZip32.exe\\\" -e -o >FILE< .\"
                              (if WinZip is installed there).
    --list-file=<file>        Take the list of file and/or directory names to
@@ -197,6 +197,16 @@ Usage: $script [options] <file(s)/dir(s)> | <set 1> <set 2> | <report files>
                              specified multiple times (but that is only
                              useful when <ext> is given each time).
                              See also --script-lang, --lang-no-ext.
+   --force-lang-def=<file>   Load language processing filters from <file>,
+                             then use these filters instead of the built-in
+                             filters.  Note:  languages which map to the same 
+                             file extension (for example:
+                             MATLAB/Objective C/MUMPS;  Pascal/PHP; 
+                             Lisp/OpenCL) will be ignored as these require 
+                             additional processing that is not expressed in 
+                             language definition files.  Use --read-lang-def 
+                             to define new language filters without replacing 
+                             built-in filters (see also --write-lang-def).
    --ignore-whitespace       Ignore horizontal white space when comparing files
                              with --diff.  See also --ignore-case.
    --ignore-case             Ignore changes in case; consider upper- and lower-
@@ -212,9 +222,12 @@ Usage: $script [options] <file(s)/dir(s)> | <set 1> <set 2> | <report files>
                              This is usually a bad idea and should only be
                              attempted with text files that have embedded
                              binary data.
-   --read-lang-def=<file>    Load from <file> the language processing filters.
-                             (see also --write-lang-def) then use these filters
-                             instead of the built-in filters.
+   --read-lang-def=<file>    Load new language processing filters from <file>
+                             and merge them with those already known to cloc.  
+                             If <file> defines a language cloc already knows 
+                             about, cloc's definition will take precedence.  
+                             Use --force-lang-def to over-ride cloc's 
+                             definitions (see also --write-lang-def ).
    --script-lang=<lang>,<s>  Process all files that invoke <s> as a #!
                              scripting language with the counter for language
                              <lang>.  For example, files that begin with
@@ -316,10 +329,10 @@ Usage: $script [options] <file(s)/dir(s)> | <set 1> <set 2> | <report files>
                              and exit.  See also --unix, --windows.
    -v[=<n>]                  Verbose switch (optional numeric value).
    --version                 Print the version of this program and exit.
-
    --write-lang-def=<file>   Writes to <file> the language processing filters
                              then exits.  Useful as a first step to creating
-                             custom language definitions (see --read-lang-def).
+                             custom language definitions (see also
+                             --force-lang-def, --read-lang-def).
 
  ${BB}Output Options${NN}
    --3                       Print third-generation language output.
@@ -386,6 +399,7 @@ my (
     $opt_exclude_lang         ,
     $opt_exclude_list_file    ,
     $opt_exclude_dir          ,
+    $opt_force_lang_def       ,
     $opt_read_lang_def        ,
     $opt_write_lang_def       ,
     $opt_strip_comments       ,
@@ -446,6 +460,7 @@ my $getopt_success = GetOptions(
    "html"                                    => \$opt_html                ,
    "ignored=s"                               => \$opt_ignored             ,
    "quiet"                                   => \$opt_quiet               ,
+   "force_lang_def|force-lang-def=s"         => \$opt_force_lang_def      ,
    "read_lang_def|read-lang-def=s"           => \$opt_read_lang_def       ,
    "show_ext|show-ext:s"                     => \$opt_show_ext            ,
    "show_lang|show-lang:s"                   => \$opt_show_lang           ,
@@ -581,9 +596,10 @@ my %Error_Codes = ( 'Unable to read'                => -1,
                     'Diff error (quoted comments?)' => -3, 
                     'Diff error, exceeded timeout'  => -4, 
                   );
-if ($opt_read_lang_def) {
+if ($opt_force_lang_def) {
+    # replace cloc's definitions
     read_lang_def(
-        $opt_read_lang_def     , #        Sample values:
+        $opt_force_lang_def    , #        Sample values:
         \%Language_by_Extension, # Language_by_Extension{f}    = 'Fortran 77' 
         \%Language_by_Script   , # Language_by_Script{sh}      = 'Bourne Shell'
         \%Language_by_File     , # Language_by_File{makefile}  = 'make'
@@ -605,6 +621,21 @@ if ($opt_read_lang_def) {
         \%Not_Code_Filename    , # Not_Code_Filename{README}   = 1
         \%Scale_Factor         , # Scale_Factor{Perl}          = 4.0
         \%Known_Binary_Archives, # Known_Binary_Archives{.tar} = 1
+        \%EOL_Continuation_re  , # EOL_Continuation_re{C++}    = '\\$'
+        );
+}
+if ($opt_read_lang_def) {
+    # augment cloc's definitions (keep cloc's where there are overlaps)
+    merge_lang_def(
+        $opt_read_lang_def     , #        Sample values:
+        \%Language_by_Extension, # Language_by_Extension{f}    = 'Fortran 77' 
+        \%Language_by_Script   , # Language_by_Script{sh}      = 'Bourne Shell'
+        \%Language_by_File     , # Language_by_File{makefile}  = 'make'
+        \%Filters_by_Language  , # Filters_by_Language{Bourne Shell}[0] = 
+                                 #      [ 'remove_matches' , '^\s*#'  ]
+        \%Not_Code_Extension   , # Not_Code_Extension{jpg}     = 1
+        \%Not_Code_Filename    , # Not_Code_Filename{README}   = 1
+        \%Scale_Factor         , # Scale_Factor{Perl}          = 4.0
         \%EOL_Continuation_re  , # EOL_Continuation_re{C++}    = '\\$'
         );
 }
@@ -668,6 +699,10 @@ my $TEMP_OFF =  0;  # Needed for --sdir; keep track of the number of
                     # scratch directories made in this run to avoid
                     # file overwrites by multiple extractions to same
                     # sdir.
+# Also track locations where temporary installations, if necessary, of
+# Algorithm::Diff and/or Regexp::Common are done.  Make sure these 
+# directories are not counted as inputs (ref bug #80 2012-11-23).
+my %TEMP_INST = ();
 
 # invert %Language_by_Script hash to get an easy-to-look-up list of known
 # scripting languages
@@ -891,6 +926,25 @@ if ($opt_extract_with) {
         }
     }
     @ARGV = @updated_ARGS;
+
+    # make sure we're not counting any directory containing
+    # temporary installations of Regexp::Common, Algorithm::Diff
+    foreach my $d (sort keys %TEMP_INST) {
+        foreach my $a (@ARGV) {
+            next unless is_dir($a);
+            if ($opt_v > 2) {
+                printf "Comparing %s (location of %s) to input [%s]\n",
+                        $d, $TEMP_INST{$d}, $a;
+            }
+            if ($a eq $d) {
+                die "File::Temp::tempdir chose directory ",
+                    $d, " to install ", $TEMP_INST{$d}, " but this ",
+                    "matches one of your input directories.  Rerun ",
+                    "with --sdir and supply a different temporary ",
+                    "directory for ", $TEMP_INST{$d}, "\n";
+            }
+        }
+    }
 }
 # 1}}}
 my @Errors    = ();
@@ -2634,6 +2688,80 @@ sub read_lang_def {                          # {{{1
     $IN->close;
     print "<- read_lang_def\n" if $opt_v > 2;
 } # 1}}}
+sub merge_lang_def {                         # {{{1
+    my ($file                     ,
+        $rh_Language_by_Extension , # in/out
+        $rh_Language_by_Script    , # in/out
+        $rh_Language_by_File      , # in/out
+        $rhaa_Filters_by_Language , # in/out
+        $rh_Not_Code_Extension    , # in/out
+        $rh_Not_Code_Filename     , # in/out
+        $rh_Scale_Factor          , # in/out
+        $rh_EOL_Continuation_re   , # in/out
+        $rh_EOL_abc,
+       ) = @_;
+
+
+    print "-> merge_lang_def($file)\n" if $opt_v > 2;
+    my $IN = new IO::File $file, "r";
+    die "Unable to read $file.\n" unless defined $IN;
+
+    my $language        = "";  
+    my $already_know_it = undef;
+    while (<$IN>) {
+        next if /^\s*#/ or /^\s*$/;
+
+        if (/^(\w+.*?)\s*$/) {
+            $language = $1;
+            $already_know_it = defined $rh_Scale_Factor->{$language};
+            next;
+        }
+        die "Missing computer language name, line $. of $file\n"
+            unless $language;
+
+        if      (/^    filter\s+(\w+)\s*$/) {
+            next if $already_know_it;
+            push @{$rhaa_Filters_by_Language->{$language}}, [ $1 ]
+
+        } elsif (/^    filter\s+(\w+)\s+(.*?)\s*$/) {
+            next if $already_know_it;
+            push @{$rhaa_Filters_by_Language->{$language}}, [ $1 , $2 ]
+
+        } elsif (/^    extension\s+(\S+)\s*$/) {
+            next if $already_know_it;
+            if (defined $rh_Language_by_Extension->{$1}) {
+                die "File extension collision:  $1 ",
+                    "maps to languages '$rh_Language_by_Extension->{$1}' ",
+                    "and '$language'\n" ,
+                    "Edit $file and remove $1 from one of these two ",
+                    "language definitions.\n";
+            }
+            $rh_Language_by_Extension->{$1} = $language;
+
+        } elsif (/^    filename\s+(\S+)\s*$/) {
+            next if $already_know_it;
+            $rh_Language_by_File->{$1} = $language;
+
+        } elsif (/^    script_exe\s+(\S+)\s*$/) {
+            next if $already_know_it;
+            $rh_Language_by_Script->{$1} = $language;
+
+        } elsif (/^    3rd_gen_scale\s+(\S+)\s*$/) {
+            next if $already_know_it;
+            $rh_Scale_Factor->{$language} = $1;
+
+        } elsif (/^    end_of_line_continuation\s+(\S+)\s*$/) {
+            next if $already_know_it;
+            $rh_EOL_Continuation_re->{$language} = $1;
+
+        } else {
+            die "Unexpected data line $. of $file:\n$_\n";
+        }
+
+    }
+    $IN->close;
+    print "<- merge_lang_def\n" if $opt_v > 2;
+} # 1}}}
 sub print_extension_info {                   # {{{1
     my ($extension,) = @_;
     if ($extension) {  # show information on this extension
@@ -3382,7 +3510,7 @@ sub rm_comments {                            # {{{1
         # then remove blank lines which are created by comment removal
         if (defined $rh_EOL_continuation_re->{$language}) {
             @lines = remove_matches_2re(\@lines, '^\s*$',
-                                        $rh_EOL_continuation_re);
+                                        $rh_EOL_continuation_re->{$language});
         } else {
             @lines = remove_matches(\@lines, '^\s*$');
         }
@@ -5243,6 +5371,7 @@ sub set_constants {                          # {{{1
 'inc'     => 1.00,
 'lex'     => 1.00,
 'MATLAB'  => 4.00,
+'Maven/XML' => 2.5,
 'IDL'     => 3.80,
 'Octave'  => 4.00,
 'ML'      => 3.00,
@@ -6048,6 +6177,7 @@ EOD
     } else {
         # let File::Temp create a suitable temporary directory
         $dir = tempdir( CLEANUP => 1 );  # 1 = delete on exit
+        $TEMP_INST{ $dir } = "Regexp::Common";
     }
     print "Using temp dir [$dir] to install Regexp::Common\n" if $opt_v;
     my $Regexp_dir        = "$dir/Regexp";
@@ -6914,6 +7044,7 @@ EOAlgDiff
     } else {
         # let File::Temp create a suitable temporary directory
         $dir = tempdir( CLEANUP => 1 );  # 1 = delete on exit
+        $TEMP_INST{ $dir } = "Algorithm::Diff";
     }
     print "Using temp dir [$dir] to install Algorithm::Diff\n" if $opt_v;
     my $Algorithm_dir      = "$dir/Algorithm";
