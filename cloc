@@ -27,13 +27,10 @@
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details:
-# http://www.gnu.org/licenses/gpl.txt
+# <http://www.gnu.org/licenses/gpl.txt>.
 #
-# You should have received a copy of the GNU General Public License
-# along with this program; if not, write to the Free Software
-# Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
 # 1}}}
-my $VERSION = "1.57";  # odd number == beta; even number == stable
+my $VERSION = "1.59";  # odd number == beta; even number == stable
 my $URL     = "http://cloc.sourceforge.net";
 require 5.006;
 # use modules                                  {{{1
@@ -1118,9 +1115,14 @@ foreach (my $F = 0; $F < scalar @fh - 1; $F++) {
     }
     push @alignment, "\n";
 
-    push @alignment, sprintf "File pairs compared: %d\n", scalar @file_pairs
+    my $alignment_pairs_index = scalar @alignment;
+    my $n_file_pairs_compared = 0;
+    # Don't know ahead of time how many file pairs will be compared
+    # since duplicates are weeded out below.  The answer is
+    # scalar @file_pairs only if there are no duplicates.
+    push @alignment, sprintf "File pairs compared: UPDATE_ME\n"
         if $opt_diff_alignment;
-#print "Language=\n", Dumper(\%Language);
+
     foreach my $pair (@file_pairs) {
         my $file_L = $pair->[0];
         my $file_R = $pair->[1];
@@ -1198,6 +1200,7 @@ foreach (my $F = 0; $F < scalar @fh - 1; $F++) {
             } else {
                 push @alignment, "  != $str";
             }
+            ++$n_file_pairs_compared;
         }
 
         # step 1: identify comments in both files
@@ -1369,7 +1372,10 @@ foreach (my $F = 0; $F < scalar @fh - 1; $F++) {
         $Results_by_Language{$Lang_L}{'blank'}   += $blank_count_L  ;
         $Results_by_Language{$Lang_L}{'comment'} += $comment_count_L;
     }
-    write_file($opt_diff_alignment, @alignment) if $opt_diff_alignment;
+    if ($opt_diff_alignment) {
+        $alignment[$alignment_pairs_index] =~ s/UPDATE_ME/$n_file_pairs_compared/;
+        write_file($opt_diff_alignment, @alignment);
+    }
 
 }
 #use Data::Dumper;
@@ -2965,7 +2971,14 @@ sub remove_duplicate_files {                 # {{{1
             next;
         } else {
 #print "equally sized files: ",join(", ", @{$files_by_size{$bytes}}), "\n";
-            foreach my $F (different_files(\@{$files_by_size{$bytes}},
+            # Files in the list @{$files_by_size{$bytes} all are
+            # $bytes long.  Sort the list by file basename.
+            my @sorted_bn = ();
+            my %BN = map { basename($_) => $_ } @{$files_by_size{$bytes}};
+            foreach my $F (sort keys %BN) {
+                push @sorted_bn, $BN{$F};
+            }
+            foreach my $F (different_files(\@sorted_bn  ,
                                             $rh_Err     ,
                                             $raa_errors ,
                                             $rh_ignored ) ) {
