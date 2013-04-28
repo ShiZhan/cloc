@@ -1479,12 +1479,7 @@ foreach my $file (sort keys %unique_source_file) {
         $Ignored{$file} = "--exclude-lang=$Language{$file}";
         next;
     }
-    my $Filters_by_Language_Language_file = undef;
-    if ($PERL_516) {
-        $Filters_by_Language_Language_file = !        @{$Filters_by_Language{$Language{$file}} };
-    } else {
-        $Filters_by_Language_Language_file = !defined @{$Filters_by_Language{$Language{$file}} };
-    }
+    my $Filters_by_Language_Language_file = !defined @{$Filters_by_Language{$Language{$file}} };
     if ($Filters_by_Language_Language_file) {
         if ($Language{$file} eq "(unknown)") {
             $Ignored{$file} = "language unknown (#1)";
@@ -3745,6 +3740,38 @@ sub remove_between {                         # {{{1
     print "<- remove_between\n" if $opt_v > 2;
     return split("\n", $all_lines);
 } # 1}}}
+sub remove_between_general {                 # {{{1
+    my ($ra_lines, $start_marker, $end_marker, ) = @_;
+    # Start and end markers may be any length strings.
+
+    print "-> remove_between_general(start=$start_marker, end=$end_marker)\n"
+        if $opt_v > 2;
+
+    my $all_lines = join("", @{$ra_lines});
+
+    my @save_lines = ();
+    my $in_comment = 0;
+    foreach (@{$ra_lines}) {
+
+        next if /^\s*$/;
+        s/\Q$start_marker\E.*?\Q$end_marker\E//g;  # strip one-line comments
+        next if /^\s*$/;
+        if ($in_comment) {
+            if (/\Q$end_marker\E/) {
+                s/^.*?\Q$end_marker\E//;
+                $in_comment = 0;
+            }
+        }
+        next if /^\s*$/;
+        $in_comment = 1 if /^(.*?)\Q$start_marker\E/;
+        next if defined $1 and $1 =~ /^\s*$/;
+        next if ($in_comment);
+        push @save_lines, $_;
+    }
+
+    print "<- remove_between_general\n" if $opt_v > 2;
+    return @save_lines;
+} # 1}}}
 sub remove_cobol_blanks {                    # {{{1
     # subroutines derived from SLOCCount
     my ($ra_lines, ) = @_;
@@ -4035,6 +4062,7 @@ sub set_constants {                          # {{{1
             'aspx'        => 'ASP.Net'               ,
             'master'      => 'ASP.Net'               ,
             'sitemap'     => 'ASP.Net'               ,
+            'cshtml'      => 'Razor'                 ,
             'awk'         => 'awk'                   ,
             'bash'        => 'Bourne Again Shell'    ,
             'bas'         => 'Visual Basic'          ,
@@ -4054,6 +4082,7 @@ sub set_constants {                          # {{{1
             'cljs'        => 'ClojureScript'         ,
             'cls'         => 'Visual Basic'          ,
             'CMakeLists.txt' => 'CMake'              ,
+            'cmake'       => 'CMake'                 ,
             'cob'         => 'COBOL'                 ,
             'COB'         => 'COBOL'                 ,
             'coffee'      => 'CoffeeScript'          ,
@@ -4091,6 +4120,7 @@ sub set_constants {                          # {{{1
             'Gnumakefile' => 'make'                  ,
             'go'          => 'Go'                    ,
             'groovy'      => 'Groovy'                ,
+            'gant'        => 'Groovy'                ,
             'h'           => 'C/C++ Header'          ,
             'H'           => 'C/C++ Header'          ,
             'hh'          => 'C/C++ Header'          ,
@@ -4119,6 +4149,7 @@ sub set_constants {                          # {{{1
             'ksh'         => 'Korn Shell'            ,
             'lhs'         => 'Haskell'               ,
             'l'           => 'lex'                   ,
+            'less'        => 'LESS'                  ,
             'lsp'         => 'Lisp'                  ,
             'lisp'        => 'Lisp'                  ,
             'lua'         => 'Lua'                   ,
@@ -4195,6 +4226,7 @@ sub set_constants {                          # {{{1
             'tk'          => 'Tcl/Tk'                ,
             'tpl'         => 'Smarty'                ,
             'vala'        => 'Vala'                  ,
+            'vapi'        => 'Vala Header'           ,
             'vhd'         => 'VHDL'                  ,
             'VHD'         => 'VHDL'                  ,
             'vhdl'        => 'VHDL'                  ,
@@ -4362,6 +4394,7 @@ sub set_constants {                          # {{{1
     'Crystal Reports'    => [   [ 'remove_matches'      , '^\s*//' ], ],
     'D'                  => [   
                                 [ 'remove_matches'      , '^\s*//' ], 
+                                [ 'remove_between_general', '/+', '+/' ],
                                 [ 'call_regexp_common'  , 'C'      ],
                                 [ 'remove_inline'       , '//.*$'  ], 
                             ],
@@ -4435,6 +4468,11 @@ sub set_constants {                          # {{{1
                                 [ 'remove_inline'       , '//.*$'  ], 
                             ],
     'JCL'                => [   [ 'remove_jcl_comments' ,          ], ],
+    'LESS'               => [
+                                [ 'remove_matches'      , '^\s*//' ], 
+                                [ 'call_regexp_common'  , 'C'      ],
+                                [ 'remove_inline'       , '//.*$'  ], 
+                            ],
     'Lisp'               => [   [ 'remove_matches'      , '^\s*;'  ], ],
     'Lisp/OpenCL'        => [ [ 'die' ,          ], ], # never called
     'LiveLink OScript'   => [   [ 'remove_matches'      , '^\s*//' ], ],
@@ -4524,6 +4562,12 @@ sub set_constants {                          # {{{1
                                 [ 'call_regexp_common'  , 'C'      ],
                                 [ 'remove_inline'       , '//.*$'  ], 
                             ],
+    'Razor'              => [
+                                [ 'remove_matches'      , '^\s*//' ],
+                                [ 'remove_between_general', '@*', '*@' ],
+                                [ 'call_regexp_common'  , 'C'      ], 
+                                [ 'remove_inline'       , '//.*$'  ],
+                            ], 
     'Rexx'               => [   [ 'call_regexp_common'  , 'C'      ], ],
     'Ruby'               => [   
                                 [ 'remove_matches'      , '^\s*#'  ], 
@@ -4611,6 +4655,11 @@ sub set_constants {                          # {{{1
                                 [ 'call_regexp_common'  , 'C'      ],
                                 [ 'remove_inline'       , '//.*$'  ], 
                             ],
+    'Vala Header'        => [   
+                                [ 'remove_matches'      , '^\s*//' ], 
+                                [ 'call_regexp_common'  , 'C'      ],
+                                [ 'remove_inline'       , '//.*$'  ], 
+                            ],
     'VHDL'               => [   
                                 [ 'remove_matches'      , '^\s*--' ],
                                 [ 'remove_matches'      , '^\s*//' ], 
@@ -4637,8 +4686,13 @@ sub set_constants {                          # {{{1
     'lex'                => [   [ 'call_regexp_common'  , 'C'      ], ],
     'XAML'               => [   [ 'remove_html_comments',          ],
                                 [ 'call_regexp_common'  , 'HTML'   ], ],
-    'MXML'               => [   [ 'remove_html_comments',          ],
-                                [ 'call_regexp_common'  , 'HTML'   ], ],
+    'MXML'               => [   
+                                [ 'remove_html_comments',          ],
+                                [ 'call_regexp_common'  , 'HTML'   ], 
+                                [ 'remove_matches'      , '^\s*//' ], 
+                                [ 'add_newlines'        ,          ], 
+                                [ 'call_regexp_common'  , 'C'      ], 
+                            ],
     'XML'                => [   [ 'remove_html_comments',          ],
                                 [ 'call_regexp_common'  , 'HTML'   ], ],
     'XSD'                => [   [ 'remove_html_comments',          ],
@@ -4674,9 +4728,11 @@ sub set_constants {                          # {{{1
     'Go'                 =>     '\\\\$'         ,
     'Java'               =>     '\\\\$'         ,
     'Javascript'         =>     '\\\\$'         ,
+    'LESS'               =>     '\\\\$'         ,
     'Lua'                =>     '\\\\$'         ,
     'make'               =>     '\\\\$'         ,
     'MATLAB'             =>     '\.\.\.\s*$'    ,
+    'MXML'               =>     '\\\\$'         ,
     'Objective C'        =>     '\\\\$'         ,
     'Objective C++'      =>     '\\\\$'         ,
     'OCaml'              =>     '\\\\$'         ,
@@ -4694,6 +4750,7 @@ sub set_constants {                          # {{{1
     'Tcl/Tk'             =>     '\\\\$'         ,
     'lex'                =>     '\\\\$'         ,
     'Vala'               =>     '\\\\$'         ,
+    'Vala Header'        =>     '\\\\$'         ,
     );
 # 1}}}
 %{$rh_Not_Code_Extension}    = (             # {{{1
@@ -5095,6 +5152,7 @@ sub set_constants {                          # {{{1
     'ladder logic'                 =>   2.22,
     'lambit/l'                     =>   1.25,
     'lattice c'                    =>   0.63,
+    'LESS'                         =>   1.50,
     'liana'                        =>   0.63,
     'lilith'                       =>   1.13,
     'linc ii'                      =>   5.71,
@@ -5234,6 +5292,7 @@ sub set_constants {                          # {{{1
     'realizer 2.0'                 =>   2.22,
     'relate/3000'                  =>   2.00,
     'reuse default'                =>  16.00,
+    'Razor'                        =>   2.00,
     'Rexx'                         =>   1.19,
     'Rexx (mvs)'                   =>   1.00,
     'Rexx (os/2)'                  =>   1.74,
@@ -5333,6 +5392,7 @@ sub set_constants {                          # {{{1
     'uniface'                      =>   5.00,
     # 'unix shell scripts'           =>   3.81,
     'Vala'                         =>   1.50,
+    'Vala Header'                  =>   1.40,
     'vax acms'                     =>   1.38,
     'vax ade'                      =>   2.00,
     'vbscript'                     =>   2.35,
@@ -7953,51 +8013,59 @@ sub unicode_file {                           # {{{1
 sub unicode_to_ascii {                       # {{{1
     my $string = shift @_; 
 
-    # A trivial attempt to convert Microsoft Windows style Unicode
+    # A trivial attempt to convert UTF-16 little or big endian
     # files into ASCII.  These files exhibit the following byte
     # sequence:
-    # byte   1:  255
-    # byte   2:  254
-    # byte   3:  ord of ASCII character
-    # byte   4:    0
-    # byte 3+i:  ord of ASCII character
-    # byte 4+i:    0
+    #   byte   1:  255
+    #   byte   2:  254
+    #   byte   3:  ord of ASCII character
+    #   byte   4:    0
+    #   byte 3+i:  ord of ASCII character
+    #   byte 4+i:    0
+    # or
+    #   byte   1:  255
+    #   byte   2:  254
+    #   byte   3:    0
+    #   byte   4:  ord of ASCII character
+    #   byte 3+i:    0
+    #   byte 4+i:  ord of ASCII character
+
+    my $length  = length $string;
+#print "length=$length\n";
+    return '' if $length <= 3;
+    my @unicode = split(//, $string);
+
+    # check the first 100 characters for big or little endian UTF-16 encoding
+    my $max_peek = $length < 200 ? $length : 200;
+    my @view_1   = ();
+    for (my $i = 2; $i < $max_peek; $i += 2) { push @view_1, $unicode[$i] }
+    my @view_2   = ();
+    for (my $i = 3; $i < $max_peek; $i += 2) { push @view_2, $unicode[$i] }
+
+    my $points_1 = 0;
+    foreach my $C (@view_1) {
+        ++$points_1 if (32 <= ord($C) and ord($C) <= 127) or ord($C) == 13
+                                                          or ord($C) == 10
+                                                          or ord($C) ==  9;
+    }
+
+    my $points_2 = 0;
+    foreach my $C (@view_2) {
+        ++$points_2 if (32 <= ord($C) and ord($C) <= 127) or ord($C) == 13
+                                                          or ord($C) == 10
+                                                          or ord($C) ==  9;
+    }
+#print "points 1: $points_1\n";
+#print "points 2: $points_2\n";
+
+    my $offset = undef;
+    if    ($points_1 > 90) { $offset = 2; }
+    elsif ($points_2 > 90) { $offset = 3; }
+    else                   { return '' }  # neither big or little endian UTF-16
 
     my @ascii              = ();
-    my $looks_like_unicode = 1;
-    my $length             = length $string;
-# print "length=$length\n";
-    if ($length <= 3) {
-        $looks_like_unicode = 0;
-        return '';
-    }
-    my @unicode            = split(//, $string);
-
-    for (my $i = 2; $i < $length; $i += 2) {
-# print "examining [$unicode[$i]]  ord ", ord($unicode[$i]), "\n";
-        if (32 <= ord($unicode[$i]) and ord($unicode[$i]) <= 127
-            or ord($unicode[$i]) == 13
-            or ord($unicode[$i]) == 10
-            or ord($unicode[$i]) ==  9
-            ) {
-            push @ascii, $unicode[$i];
-# print "adding [$unicode[$i]]\n";
-        } else {
-            $looks_like_unicode = 0;
-            last;
-        }
-        if ($i+1 < $length) {
-            if (!$unicode[$i+1]) {
-                $looks_like_unicode = 0;
-                last;
-            }
-        }
-    }
-    if ($looks_like_unicode) {
-        return join("", @ascii);
-    } else {
-        return '';
-    }
+    for (my $i = $offset; $i < $length; $i += 2) { push @ascii, $unicode[$i]; }
+    return join("", @ascii);
 } # 1}}}
 sub uncompress_archive_cmd {                 # {{{1
     my ($archive_file, ) = @_;
