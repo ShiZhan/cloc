@@ -54,6 +54,11 @@ if (defined $Digest::MD5::VERSION) {
     warn "Digest::MD5 not installed; will skip file uniqueness checks.\n";
 }
 
+# Time::HiRes became standard with Perl 5.8
+my $HAVE_Time_HiRes = 0;
+eval "use Time::HiRes;";
+$HAVE_Time_HiRes = 1 if defined $Time::HiRes::VERSION;
+
 my $HAVE_Rexexp_Common;
 # Regexp::Common isn't in the standard distribution.  It will
 # be installed in a temp directory if necessary.
@@ -215,6 +220,14 @@ Usage: $script [options] <file(s)/dir(s)> | <set 1> <set 2> | <report files>
                              are checked against known scripting languages
                              by examining the first line for #!).  See also
                              --force-lang, --script-lang.
+   --max-file-size=<MB>      Skip files larger than <MB> megabytes when
+                             traversing directories.  By default, <MB>=100.
+                             cloc's memory requirement is roughly twenty times 
+                             larger than the largest file so running with 
+                             files larger than 100 MB on a computer with less 
+                             than 2 GB of memory will cause problems.  
+                             Note:  this check does not apply to files 
+                             explicitly passed as command line arguments.
    --read-binary-files       Process binary files in addition to text files.
                              This is usually a bad idea and should only be
                              attempted with text files that have embedded
@@ -374,7 +387,7 @@ Usage: $script [options] <file(s)/dir(s)> | <set 1> <set 2> | <report files>
 #                            comment and code lines in different colors.
 
 $| = 1;  # flush STDOUT
-my $start_time = time();
+my $start_time = get_time();
 my (
     $opt_categorized          ,
     $opt_found                ,
@@ -440,6 +453,7 @@ my (
     $opt_force_on_unix        ,   # actually forces !$ON_WINDOWS
     $opt_show_os              ,
     $opt_skip_archive         ,
+    $opt_max_file_size        ,   # in MB
    );
 my $getopt_success = GetOptions(
    "by_file|by-file"                         => \$opt_by_file             ,
@@ -507,6 +521,7 @@ my $getopt_success = GetOptions(
    "unix"                                    => \$opt_force_on_unix       ,
    "show_os|show-os"                         => \$opt_show_os             ,
    "skip_archive|skip-archive=s"             => \$opt_skip_archive        ,
+   "max_file_size|max-file-size=i"           => \$opt_max_file_size       ,
   );
 $opt_by_file  = 1 if defined  $opt_by_file_by_lang;
 my $CLOC_XSL = "cloc.xsl"; # created with --xsl
@@ -537,6 +552,7 @@ $opt_diff_timeout      =10  unless $opt_diff_timeout;
 $opt_csv               = 1  if $opt_csv_delimiter;
 $ON_WINDOWS            = 1  if $opt_force_on_windows;
 $ON_WINDOWS            = 0  if $opt_force_on_unix;
+$opt_max_file_size     = 100 unless $opt_max_file_size;
 
 # Options defaults:
 $opt_progress_rate = 100 unless defined $opt_progress_rate;
@@ -759,7 +775,7 @@ if ($opt_sum_reports) {
                                           \%Filters_by_Language );
         }
         next unless %Results;
-        my $end_time = time();
+        my $end_time = get_time();
         my @results  = generate_report($VERSION, $end_time - $start_time,
                                        $type,
                                       \%{$Results{ $type }}, \%Scale_Factor);
@@ -1390,7 +1406,7 @@ write_file($opt_counted, sort keys %Results_by_File) if $opt_counted;
 # 1}}}
 # Step 7:  Assemble results.                   {{{1
 #
-my $end_time = time();
+my $end_time = get_time();
 printf "%8d file%s ignored.                           \n", 
     plural_form(scalar keys %Ignored) unless $opt_quiet;
 print_errors(\%Error_Codes, \@Errors) if @Errors;
@@ -1400,11 +1416,11 @@ if (!%Delta_by_Language) {
 }
 
 if ($opt_by_file) {
-    @Lines_Out = diff_report($VERSION, time() - $start_time,
+    @Lines_Out = diff_report($VERSION, get_time() - $start_time,
                             "by file",
                             \%Delta_by_File, \%Scale_Factor);
 } else {
-    @Lines_Out = diff_report($VERSION, time() - $start_time,
+    @Lines_Out = diff_report($VERSION, get_time() - $start_time,
                             "by language",
                             \%Delta_by_Language, \%Scale_Factor);
 }
@@ -1515,7 +1531,7 @@ write_file($opt_counted, sort keys %Results_by_File) if $opt_counted;
 # 1}}}
 # Step 7:  Assemble results.                   {{{1
 #
-my $end_time = time();
+my $end_time = get_time();
 printf "%8d file%s ignored.\n", plural_form(scalar keys %Ignored) 
     unless $opt_quiet;
 print_errors(\%Error_Codes, \@Errors) if @Errors;
@@ -1760,7 +1776,7 @@ sub diff_report     {                        # {{{1
     my $header_line  = sprintf "%s v %s", $URL, $version;
     my $sum_files    = 1;
     my $sum_lines    = 1;
-       $header_line .= sprintf("  T=%.1f s (%.1f files/s, %.1f lines/s)",
+       $header_line .= sprintf("  T=%.2f s (%.1f files/s, %.1f lines/s)",
                         $elapsed_sec           ,
                         $sum_files/$elapsed_sec,
                         $sum_lines/$elapsed_sec) unless $opt_sum_reports;
@@ -2319,7 +2335,7 @@ sub generate_report {                        # {{{1
     }
 
     my $header_line  = sprintf "%s v %s", $URL, $version;
-       $header_line .= sprintf("  T=%.1f s (%.1f files/s, %.1f lines/s)",
+       $header_line .= sprintf("  T=%.2f s (%.1f files/s, %.1f lines/s)",
                         $elapsed_sec           ,
                         $sum_files/$elapsed_sec,
                         $sum_lines/$elapsed_sec) unless $opt_sum_reports;
@@ -3013,6 +3029,14 @@ sub files {                                  # {{{1
         printf "files(%s)  zero size\n", $File::Find::name if $opt_v > 5;
     }
     return unless $nBytes  ; # attempting other tests w/pipe or socket will hang
+    if ($nBytes > $opt_max_file_size*1024**2) {
+        $Ignored{$File::Find::name} = "file size of " .
+            $nBytes/1024**2 . " MB exceeds max file size of " .
+            "$opt_max_file_size MB";
+        printf "file(%s)  exceeds $opt_max_file_size MB\n", 
+            $File::Find::name if $opt_v > 5;
+        return;
+    }
     my $is_dir = is_dir($_);
     my $is_bin = -B     $_ ;
     printf "files(%s)  size=%d is_dir=%d  -B=%d\n",
@@ -3271,6 +3295,7 @@ sub different_files {                        # {{{1
             if ($HAVE_Digest_MD5) {
                 binmode $IN;
                 my $MD5 = Digest::MD5->new->addfile($IN)->hexdigest;
+#print "$F, $MD5\n";
                 push @{$file_hash{$MD5}}, $F;
             } else {
                 # all files treated unique
@@ -3294,7 +3319,16 @@ sub different_files {                        # {{{1
                                         \@nul_a, \%nul_h);
             $i_best = $i if $language ne "(unknown)";
         }
-        push @unique, $file_hash{$md5}[$i_best];
+        # keep the best one found and identify the rest as ignored
+        for (my $i = 0; $i < scalar(@{$file_hash{$md5}}); $i++) {
+            if ($i == $i_best) {
+                push @unique, $file_hash{$md5}[$i_best];
+            } else {
+                $rh_ignored->{$file_hash{$md5}[$i]} = "duplicate of " .
+                    $file_hash{$md5}[$i_best];
+            }
+        }
+
     }
     print "<- different_files(@unique)\n" if $opt_v > 2;
     return @unique;
@@ -4080,12 +4114,13 @@ sub set_constants {                          # {{{1
             'cl'          => 'Lisp/OpenCL'           ,
             'clj'         => 'Clojure'               ,
             'cljs'        => 'ClojureScript'         ,
-            'cls'         => 'Visual Basic'          ,
+            'cls'         => 'Visual Basic'          , # also Apex Class
             'CMakeLists.txt' => 'CMake'              ,
             'cmake'       => 'CMake'                 ,
             'cob'         => 'COBOL'                 ,
             'COB'         => 'COBOL'                 ,
             'coffee'      => 'CoffeeScript'          ,
+            'component'   => 'Visualforce Component' ,
             'config'      => 'ASP.Net'               ,
             'cpp'         => 'C++'                   ,
             'cs'          => 'C#'                    ,
@@ -4144,6 +4179,8 @@ sub set_constants {                          # {{{1
             'jcl'         => 'JCL'                   , # IBM Job Control Lang.
             'jl'          => 'Lisp'                  ,
             'js'          => 'Javascript'            ,
+            'jsf'         => 'JavaServer Faces'      ,
+            'xhtml'       => 'JavaServer Faces'      ,
             'jsp'         => 'JSP'                   , # Java server pages
             'ksc'         => 'Kermit'                ,
             'ksh'         => 'Korn Shell'            ,
@@ -4173,6 +4210,7 @@ sub set_constants {                          # {{{1
             'mth'         => 'Teamcenter mth'        ,
             'oscript'     => 'LiveLink OScript'      ,
             'pad'         => 'Ada'                   , # Oracle Ada preprocessor
+            'page'        => 'Visualforce Page'      ,
             'pas'         => 'Pascal'                ,
             'pcc'         => 'C++'                   , # Oracle C++ preprocessor
             'perl'        => 'Perl'                  ,
@@ -4212,6 +4250,8 @@ sub set_constants {                          # {{{1
             'ses'         => 'Patran Command Language'   ,
             'pcl'         => 'Patran Command Language'   ,
             'ps1'         => 'PowerShell'            ,
+            'sass'        => 'SASS'                  ,
+            'scss'        => 'SASS'                  ,
             'sh'          => 'Bourne Shell'          ,
             'smarty'      => 'Smarty'                ,
             'sql'         => 'SQL'                   ,
@@ -4221,10 +4261,14 @@ sub set_constants {                          # {{{1
             'spc.sql'     => 'SQL Stored Procedure'  ,
             'udf.sql'     => 'SQL Stored Procedure'  ,
             'data.sql'    => 'SQL Data'              ,
+            'v'           => 'Verilog-SystemVerilog' ,
+            'sv'          => 'Verilog-SystemVerilog' ,
+            'svh'         => 'Verilog-SystemVerilog' ,
             'tcl'         => 'Tcl/Tk'                ,
             'tcsh'        => 'C Shell'               ,
             'tk'          => 'Tcl/Tk'                ,
             'tpl'         => 'Smarty'                ,
+            'trigger'     => 'Apex Trigger'          ,
             'vala'        => 'Vala'                  ,
             'vapi'        => 'Vala Header'           ,
             'vhd'         => 'VHDL'                  ,
@@ -4320,6 +4364,11 @@ sub set_constants {                          # {{{1
     'Ant'                => [
                                 [ 'remove_html_comments',          ],
                                 [ 'call_regexp_common'  , 'HTML'   ], 
+                            ],
+    'Apex Trigger'       => [
+                                [ 'remove_matches'      , '^\s*//' ],
+                                [ 'call_regexp_common'  , 'C'      ], 
+                                [ 'remove_inline'       , '//.*$'  ],
                             ],
     'Arduino Sketch'     => [   # same as C
                                 [ 'remove_matches'      , '^\s*//' ],
@@ -4457,6 +4506,11 @@ sub set_constants {                          # {{{1
                                 [ 'add_newlines'        ,          ],
                                 [ 'call_regexp_common'  , 'C'      ],
                             ],
+    'JavaServer Faces'   => [   
+                                [ 'remove_matches'      , '^\s*//' ], 
+                                [ 'call_regexp_common'  , 'C'      ],
+                                [ 'remove_inline'       , '//.*$'  ], 
+                            ],
     'Java'               => [   
                                 [ 'remove_matches'      , '^\s*//' ], 
                                 [ 'call_regexp_common'  , 'C'      ],
@@ -4581,6 +4635,11 @@ sub set_constants {                          # {{{1
                                 [ 'remove_inline'       , '//.*$'  ], 
                                 [ 'call_regexp_common'  , 'C'      ],
                             ],
+    'SASS'               => [   
+                                [ 'remove_matches'      , '^\s*//' ], 
+                                [ 'call_regexp_common'  , 'C'      ],
+                                [ 'remove_inline'       , '//.*$'  ], 
+                            ],
     'Scala'              => [   
                                 [ 'remove_matches'      , '^\s*//' ], 
                                 [ 'remove_inline'       , '//.*$'  ], 
@@ -4660,6 +4719,11 @@ sub set_constants {                          # {{{1
                                 [ 'call_regexp_common'  , 'C'      ],
                                 [ 'remove_inline'       , '//.*$'  ], 
                             ],
+    'Verilog-SystemVerilog' => [
+                                [ 'remove_matches'      , '^\s*//' ], 
+                                [ 'remove_inline'       , '//.*$'  ], 
+                                [ 'call_regexp_common'  , 'C'      ],
+                            ],
     'VHDL'               => [   
                                 [ 'remove_matches'      , '^\s*--' ],
                                 [ 'remove_matches'      , '^\s*//' ], 
@@ -4674,6 +4738,14 @@ sub set_constants {                          # {{{1
     'Visual Basic'       => [   [ 'remove_above'        , '^\s*Attribute\s+VB_Name\s+=' ],               
                                 [ 'remove_matches'      , '^\s*Attribute\s+'],
                                 [ 'remove_matches'      , '^\s*\47'], ],  # \47 = '
+    'Visualforce Component' => [
+                                [ 'remove_html_comments',          ],
+                                [ 'call_regexp_common'  , 'HTML'   ], 
+                            ],
+    'Visualforce Page'   => [
+                                [ 'remove_html_comments',          ],
+                                [ 'call_regexp_common'  , 'HTML'   ], 
+                            ],
     'yacc'               => [   
                                 [ 'call_regexp_common'  , 'C'      ], 
                                 [ 'remove_matches'      , '^\s*//' ], 
@@ -4917,6 +4989,7 @@ sub set_constants {                          # {{{1
 'webinfo'                     =>   1.29,
 'CCS'                         =>   5.33,
 
+    'Apex Trigger'                 =>   1.4 ,
 #   'assembler (basic)'            =>   0.25,
     'Arduino Sketch'               =>   1.00,
     'Assembly'                     =>   0.25,
@@ -5132,8 +5205,9 @@ sub set_constants {                          # {{{1
     'j2ee'                         =>   1.60,
     'janus'                        =>   1.13,
     'Java'                         =>   1.36,
-'Javascript'                   =>   1.48,
-'JSP'                          =>   1.48,
+    'Javascript'                   =>   1.48,
+    'JavaServer Faces'             =>   1.5 ,
+    'JSP'                          =>   1.48,
     'JCL'                          =>   1.67,
     'joss'                         =>   0.75,
     'jovial'                       =>   0.75,
@@ -5320,6 +5394,7 @@ sub set_constants {                          # {{{1
     'ksh'                          =>   3.81,
     'C Shell'                      =>   3.81,
     'siebel tools '                =>   6.15,
+    'SASS'                         =>   1.5 ,
     'simplan'                      =>   2.22,
     'simscript'                    =>   1.74,
     'simula'                       =>   1.74,
@@ -5397,6 +5472,7 @@ sub set_constants {                          # {{{1
     'vax ade'                      =>   2.00,
     'vbscript'                     =>   2.35,
     'vectran'                      =>   0.75,
+    'Verilog-SystemVerilog'        =>   1.51,
     'VHDL'                         =>   4.21,
     'vim script'                   =>   3.00,
     'visible c'                    =>   1.63,
@@ -5415,6 +5491,8 @@ sub set_constants {                          # {{{1
     'visual cobol'                 =>   4.00,
     'visual objects'               =>   5.00,
     'visualage'                    =>   3.81,
+    'Visualforce Component'        =>   1.9 ,
+    'Visualforce Page'             =>   1.9 ,
     'visualgen'                    =>   4.44,
     'vpf'                          =>   0.84,
     'vsrexx'                       =>   2.50,
@@ -5469,6 +5547,7 @@ sub set_constants {                          # {{{1
             '.ZIP'     => 1 ,
             '.ear'     => 1 ,  # Java
             '.war'     => 1 ,  # contained within .ear
+            '.xz'      => 1 ,
             );
 # 1}}}
 } # end sub set_constants()
@@ -7253,9 +7332,9 @@ printf ".m:  Kill   obj C=% 2d  matlab=% 2d  mumps=% 2d\n", $objective_C_points,
             ++$matlab_points;
 printf ".m:  funct  obj C=% 2d  matlab=% 2d  mumps=% 2d\n", $objective_C_points, $matlab_points, $mumps_points if $DEBUG;
         } elsif (m{^\s*%}) {              #   %
+            # matlab commented line
             --$objective_C_points;
             ++$matlab_points;
-            ++$mumps_points;
 printf ".m:  pcent  obj C=% 2d  matlab=% 2d  mumps=% 2d\n", $objective_C_points, $matlab_points, $mumps_points if $DEBUG;
         }
     }
@@ -8102,6 +8181,16 @@ sub uncompress_archive_cmd {                 # {{{1
         } else {
             $missing = "bzip2";
         }
+    } elsif ($archive_file =~ /\.tar\.xz$/ and !$ON_WINDOWS)    {
+        if (external_utility_exists("unxz --version")) {
+            if (external_utility_exists("tar --version")) {
+                $extract_cmd = "unxz -dc '$archive_file' | tar xf -";
+            } else {
+                $missing = "tar";
+            }
+        } else {
+            $missing = "bzip2";
+        }
     } elsif ($archive_file =~ /\.tar$/ and !$ON_WINDOWS)    {
         $extract_cmd = "tar xf '$archive_file'";
     } elsif ($archive_file =~ /\.src\.rpm$/i and !$ON_WINDOWS) {
@@ -8695,6 +8784,13 @@ sub combine_diffs {                          # {{{1
     $res .= sprintf("%s\n", "-" x $width);
   
     return $res;
+} # 1}}}
+sub get_time {                               # {{{1
+    if ($HAVE_Time_HiRes) {
+        return Time::HiRes::time();
+    } else {
+        return time();
+    }
 } # 1}}}
 # subroutines copied from SLOCCount
 my %lex_files    = ();  # really_is_lex()
