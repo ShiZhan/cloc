@@ -30,7 +30,7 @@
 # <http://www.gnu.org/licenses/gpl.txt>.
 #
 # 1}}}
-my $VERSION = "1.60";  # odd number == beta; even number == stable
+my $VERSION = "1.61";  # odd number == beta; even number == stable
 my $URL     = "http://cloc.sourceforge.net";
 require 5.006;
 # use modules                                  {{{1
@@ -4130,6 +4130,7 @@ sub set_constants {                          # {{{1
             'csh'         => 'C Shell'               ,
             'css'         => "CSS"                   ,
             'ctl'         => 'Visual Basic'          ,
+            'cu'          => 'CUDA'                  ,
             'cxx'         => 'C++'                   ,
             'd'           => 'D'                     ,
             'da'          => 'DAL'                   ,
@@ -4140,6 +4141,7 @@ sub set_constants {                          # {{{1
             'dsr'         => 'Visual Basic'          ,
             'dtd'         => 'DTD'                   ,
             'ec'          => 'C'                     ,
+            'ecpp'        => 'ECPP'                  ,
             'el'          => 'Lisp'                  ,
             'erl'         => 'Erlang'                ,
             'exp'         => 'Expect'                ,
@@ -4185,6 +4187,8 @@ sub set_constants {                          # {{{1
             'jsf'         => 'JavaServer Faces'      ,
             'xhtml'       => 'JavaServer Faces'      ,
             'jsp'         => 'JSP'                   , # Java server pages
+            'jspf'        => 'JSP'                   , # Java server pages            
+            'vm'          => 'Velocity Template Language' ,
             'ksc'         => 'Kermit'                ,
             'ksh'         => 'Korn Shell'            ,
             'lhs'         => 'Haskell'               ,
@@ -4254,6 +4258,7 @@ sub set_constants {                          # {{{1
             'ses'         => 'Patran Command Language'   ,
             'pcl'         => 'Patran Command Language'   ,
             'ps1'         => 'PowerShell'            ,
+            'R'           => 'R'                     ,
             'sass'        => 'SASS'                  ,
             'scss'        => 'SASS'                  ,
             'sh'          => 'Bourne Shell'          ,
@@ -4419,6 +4424,11 @@ sub set_constants {                          # {{{1
                                 [ 'remove_matches'      , '^\s*#'  ],
                                 [ 'remove_inline'       , '#.*$'   ], 
                             ],
+    'CUDA'               => [   
+                                [ 'remove_matches'      , '^\s*//' ], 
+                                [ 'remove_inline'       , '//.*$'  ], 
+                                [ 'call_regexp_common'  , 'C'      ],
+                            ],
     'Cython'             => [   
                                 [ 'remove_matches'      , '^\s*#'  ], 
                                 [ 'docstring_to_C'                 ], 
@@ -4457,6 +4467,14 @@ sub set_constants {                          # {{{1
                                 [ 'remove_inline'       , '//.*$'  ], 
                                 [ 'call_regexp_common'  , 'C'      ],
                             ],
+    'ECPP'               => [   
+                                [ 'remove_between_general', 
+                                  '<%doc>', '</%doc>',             ],
+                                [ 'remove_between_general', 
+                                  '<#'    , '#>'     ,             ],
+                                [ 'call_regexp_common'  , 'HTML'   ], 
+                            ],
+
     'NASTRAN DMAP'       => [   
                                 [ 'remove_matches'      , '^\s*\$' ], 
                                 [ 'remove_inline'       , '\$.*$'  ], 
@@ -4625,6 +4643,10 @@ sub set_constants {                          # {{{1
                                 [ 'call_regexp_common'  , 'C'      ],
                                 [ 'remove_inline'       , '//.*$'  ], 
                             ],
+    'R'                  => [   
+                                [ 'remove_matches'      , '^\s*#'  ], 
+                                [ 'remove_inline'       , '#.*$'   ],
+                            ], 
     'Razor'              => [
                                 [ 'remove_matches'      , '^\s*//' ],
                                 [ 'remove_between_general', '@*', '*@' ],
@@ -4755,6 +4777,14 @@ sub set_constants {                          # {{{1
                                 [ 'remove_html_comments',          ],
                                 [ 'call_regexp_common'  , 'HTML'   ], 
                             ],
+    'Velocity Template Language' => [
+                                [ 'remove_html_comments',          ],
+                                [ 'call_regexp_common'  , 'HTML'   ],
+                                [ 'remove_jsp_comments' ,          ], 
+                                [ 'remove_matches'      , '^\s*//' ],
+                                [ 'add_newlines'        ,          ],
+                                [ 'call_regexp_common'  , 'C'      ],
+                            ],                            
     'yacc'               => [   
                                 [ 'call_regexp_common'  , 'C'      ], 
                                 [ 'remove_matches'      , '^\s*//' ], 
@@ -4821,6 +4851,7 @@ sub set_constants {                          # {{{1
     'Patran Command Language'=> '\\\\$'         ,
     'PowerShell'         =>     '\\\\$'         ,
     'Python'             =>     '\\\\$'         ,
+    'R'                  =>     '\\\\$'         ,
     'Ruby'               =>     '\\\\$'         ,
     'sed'                =>     '\\\\$'         ,
     'Bourne Again Shell' =>     '\\\\$'         ,
@@ -5082,6 +5113,7 @@ sub set_constants {                          # {{{1
 'CSS' => 1.0,
     
     'culprit'                      =>   1.57,
+    'CUDA'                         =>   1.00,
     'cxpert'                       =>   1.63,
     'cygnet'                       =>   4.21,
     'D'                            =>   1.70,
@@ -5109,6 +5141,7 @@ sub set_constants {                          # {{{1
     'easy'                         =>   1.63,
     'easytrieve+'                  =>   2.35,
     'eclipse'                      =>   1.63,
+    'ECPP'                         =>   1.90,
     'eda/sql'                      =>   6.67,
     'edscheme 3.4'                 =>   1.51,
     'eiffel'                       =>   3.81,
@@ -5217,6 +5250,7 @@ sub set_constants {                          # {{{1
     'Javascript'                   =>   1.48,
     'JavaServer Faces'             =>   1.5 ,
     'JSP'                          =>   1.48,
+    'Velocity Template Language'   =>   1.00,
     'JCL'                          =>   1.67,
     'joss'                         =>   0.75,
     'jovial'                       =>   0.75,
@@ -5366,6 +5400,7 @@ sub set_constants {                          # {{{1
     'quick c'                      =>   0.63,
     'quickbuild'                   =>   2.86,
     'quiz'                         =>   5.33,
+    'R'                            =>   3.00,
     'rally'                        =>   2.00,
     'ramis ii'                     =>   2.00,
     'rapidgen'                     =>   2.86,
@@ -5504,6 +5539,7 @@ sub set_constants {                          # {{{1
     'Visualforce Component'        =>   1.9 ,
     'Visualforce Page'             =>   1.9 ,
     'visualgen'                    =>   4.44,
+    'VM'                           =>   2.00,
     'vpf'                          =>   0.84,
     'vsrexx'                       =>   2.50,
     'vulcan'                       =>   1.25,
