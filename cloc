@@ -1,6 +1,6 @@
 #!/usr/bin/env perl
 # cloc -- Count Lines of Code                  {{{1
-# Copyright (C) 2006-2013 Northrop Grumman Corporation
+# Copyright (C) 2006-2014 Northrop Grumman Corporation
 # Author:  Al Danial <al.danial@gmail.com>
 #          First release August 2006
 #
@@ -2329,7 +2329,6 @@ sub generate_report {                        # {{{1
         $BY_FILE      = 1;
     } elsif ($report_type eq "by report file")     {
         $first_column = "File";
-        $BY_FILE      = 1;
     } else {
         $first_column = "Report File";
     }
@@ -3124,14 +3123,14 @@ sub classify_file {                          # {{{1
         }
     }
 
-    if ($file =~ /\.(\w+)$/) { # has an extension
+    if ($file =~ /\.(\S+)$/) { # has an extension
       print "$full_file extension=[$1]\n" if $opt_v > 2;
       my $extension = $1;
          # Windows file names are case insensitive so map 
          # all extensions to lowercase there.
          $extension = lc $extension if $ON_WINDOWS;  
       my @extension_list = ( $extension );
-      if ($file =~ /\.(\w+\.\w+)$/) { # has a double extension
+      if ($file =~ /\.(\S+\.\S+)$/) { # has a double extension
           my $extension = $1;
           $extension = lc $extension if $ON_WINDOWS;  
           unshift @extension_list, $extension;  # examine double ext first
@@ -4156,6 +4155,8 @@ sub set_constants {                          # {{{1
             'fmt'         => 'Oracle Forms'          ,
             'focexec'     => 'Focus'                 ,
             'frm'         => 'Visual Basic'          ,
+            'fs'          => 'F#'                    ,
+            'fsi'         => 'F#'                    ,
             'gnumakefile' => 'make'                  ,
             'Gnumakefile' => 'make'                  ,
             'go'          => 'Go'                    ,
@@ -4278,6 +4279,7 @@ sub set_constants {                          # {{{1
             'tk'          => 'Tcl/Tk'                ,
             'tpl'         => 'Smarty'                ,
             'trigger'     => 'Apex Trigger'          ,
+            'ts'          => 'TypeScript'            ,
             'vala'        => 'Vala'                  ,
             'vapi'        => 'Vala Header'           ,
             'vhd'         => 'VHDL'                  ,
@@ -4504,6 +4506,10 @@ sub set_constants {                          # {{{1
                                 [ 'remove_f77_comments' ,          ],
                                 [ 'remove_f90_comments' ,          ], 
                                 [ 'remove_inline'       , '\!.*$'  ],
+                            ],
+    'F#'                 => [   
+                                [ 'call_regexp_common'  , 'Pascal' ], 
+                                [ 'remove_matches'      , '^\s*//' ],
                             ],
     'Go'                 => [   
                                 [ 'remove_matches'      , '^\s*//' ], 
@@ -4736,6 +4742,11 @@ sub set_constants {                          # {{{1
     'Teamcenter def'     => [   [ 'remove_matches'      , '^\s*#'  ], ], 
     'Teamcenter met'     => [   [ 'call_regexp_common'  , 'C'      ], ],
     'Teamcenter mth'     => [   [ 'remove_matches'      , '^\s*#'  ], ], 
+    'TypeScript'         => [   
+                                [ 'remove_matches'      , '^\s*//' ], 
+                                [ 'remove_inline'       , '//.*$'  ], 
+                                [ 'call_regexp_common'  , 'C'      ],
+                            ],
     'Softbridge Basic'   => [   [ 'remove_above'        , '^\s*Attribute\s+VB_Name\s+=' ],               
                                 [ 'remove_matches'      , '^\s*Attribute\s+'],
                                 [ 'remove_matches'      , '^\s*\47'], ],  # \47 = '
@@ -4860,6 +4871,7 @@ sub set_constants {                          # {{{1
     'Kermit'             =>     '\\\\$'         ,
     'Korn Shell'         =>     '\\\\$'         ,
     'Tcl/Tk'             =>     '\\\\$'         ,
+    'TypeScript'         =>     '\\\\$'         ,
     'lex'                =>     '\\\\$'         ,
     'Vala'               =>     '\\\\$'         ,
     'Vala Header'        =>     '\\\\$'         ,
@@ -5183,6 +5195,7 @@ sub set_constants {                          # {{{1
     'foxpro 1'                     =>   2.00,
     'foxpro 2.5'                   =>   2.35,
     'framework'                    =>  13.33,
+    'F#'                           =>   2.50,
     'g2'                           =>   1.63,
     'gamma'                        =>   5.00,
     'genascript'                   =>   2.96,
@@ -5506,6 +5519,7 @@ sub set_constants {                          # {{{1
     'turing'                       =>   1.00,
     'tutor'                        =>   1.51,
     'twaice'                       =>   1.63,
+    'TypeScript'                   =>   2.00,
     'ucsd pascal'                  =>   0.88,
     'ufo/ims'                      =>   2.22,
     'uhelp'                        =>   2.50,
